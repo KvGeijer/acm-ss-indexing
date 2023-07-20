@@ -12,13 +12,16 @@ fn read_points(file) -> {
 read_points("data10K10.txt") :>> data;	
 read_points("queries10.txt") :>> queries;	
 
+pow := \x, y -> x^y; // stdlib? for all normal ops
+	
 // Counter to count how many times the function is called. Just reset it when you want
 dist_count := 0;
 fn dist(x, y) -> {
 	dist_count += 1;
-	// Very ugly that we cannot pattern match now in a lambda against an iterator! reinstate tuple?
-	zip(x, y) >> map(\tup -> (tup[0] - tup[1])^2) >> sum :>> sq_sum;
-	sq_sum ^ 0.5
+	zip(x, y) 
+		>> map(\(x, y) -> (x - y)^2) 
+		>> sum 
+		>> pow(0.5)
 };
 
 // Should be in stdlib
