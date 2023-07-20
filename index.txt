@@ -1,0 +1,44 @@
+import numpy as np
+import argparse
+
+data0 = np.loadtxt("assignment/data10K10.txt",
+                 delimiter=" ", dtype=float)
+
+data = data0[:,:10]
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument("pivots", type = int, default=5)
+parser.add_argument("epsilon", type = int, default=10)
+parser.add_argument("nn", type = int, default=5)
+
+args = parser.parse_args()
+
+seed = data[0]
+
+def dist(x, y):
+	return np.linalg.norm(np.subtract(x, y))
+
+dists0 = np.apply_along_axis(dist, 1, data, seed)
+pivot_i = dists0.argmax()
+pivot_inds = [pivot_i]
+last_pivot = data[pivot_i]
+# print(pivot_i)
+
+
+all_dists = np.apply_along_axis(dist, 1, data, last_pivot).reshape(-1, 1)
+
+
+for _ in range(args.pivots):
+	row_sums = np.sum(all_dists, axis=1, keepdims=True)
+	
+	pivot_inds.append(row_sums.argmax())
+	last_pivot = data[pivot_inds[-1]]
+
+	new_dists = np.apply_along_axis(dist, 1, data, last_pivot)
+	all_dists = np.column_stack((all_dists, new_dists))
+
+
+
+pivot_inds = pivot_inds[:-1]
+print(pivot_inds)

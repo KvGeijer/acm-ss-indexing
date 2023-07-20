@@ -1,0 +1,165 @@
+// I don't implement cli args yet
+
+(nbr_pivots, epsilon, nn) := [10, 0.2, 5];
+
+fn read_points(file) -> {
+	read(file)	
+		>> split("\r\n") 
+		>> map(\>> split(" ")  >>  map(float))
+};
+
+
+read_points("data10K10.txt") :>> data;	
+read_points("queries10.txt") :>> queries;	
+
+// Counter to count how many times the function is called. Just reset it when you want
+dist_count := 0;
+fn dist(x, y) -> {
+	dist_count += 1;
+	// Very ugly that we cannot pattern match now in a lambda against an iterator! reinstate tuple?
+	zip(x, y) >> map(\tup -> (tup[0] - tup[1])^2) >> sum :>> sq_sum;
+	sq_sum ^ 0.5
+};
+
+// Should be in stdlib
+fn argmax(arr) -> {
+	(max_val, max_i) := [arr[0], 0];
+	for (i, val) in arr >> enumerate {
+		if val > max_val {
+			(max_val, max_i) = [val, i];
+		};
+	};
+	max_i
+};
+
+seed := data[0];
+dists0 := data 
+	>> map(\>> dist(seed));
+
+pivot_inds := [argmax(dists0)];
+dists := [data >> map(\>> dist(data[pivot_inds[0]]))];
+dist_sums := dists[0] >> map(id); // makeshift clone
+
+while len(pivot_inds) < nbr_pivots {
+	// Find new pivot
+	argmax(dist_sums) >> push(pivot_inds);
+
+	// Find its distances
+	data >> map(\>> dist(data[pivot_inds[-1]])) 
+		>> push(dists);
+
+	// Add distances to row sums
+	dist_sums = zip(dist_sums, dists[-1]) >> map(sum);
+};
+
+pivots := pivot_inds >> map(\i -> data[i]);
+print("pivot inds: " ++ str(pivot_inds) ++ "\n");
+
+fn naive_range_query(query, eps) -> {
+	data 
+		>> map(\>> dist(query))
+		>> enumerate
+		>> filter(\(_, len) -> len <= eps)
+		>> map(\(i, _) -> i)
+};
+
+fn all(iter) -> {
+	for b in iter {
+		if !b return false;
+	};
+	return true;
+};
+
+fn pivot_range_query(query, eps) -> {
+	q_dists := pivots >> map(\>> dist(query));
+	close := [];
+	for (obj_i, obj) in data >> enumerate {
+		if q_dists
+			>> enumerate
+			>> map(\(q_i, q_dist) -> abs(dists[q_i][obj_i] - q_dist) <= eps)
+			>> all {
+				if dist(obj, query) < eps push(obj_i, close); // So nice line
+			};
+	};
+	close
+};
+
+fn test_range_queries() -> {
+	dist_count = 0;
+	start := time();
+	naive_ans := queries >> map(\>> naive_range_query(epsilon));
+	naive_dur := time() - start;
+	naive_dist_count := dist_count;
+
+	dist_count = 0;
+	start := time();
+	pivot_ans := queries >> map(\>> pivot_range_query(epsilon));
+	pivot_dur := time() - start;
+	pivot_dist_count := dist_count;
+
+	print("average distance comp per range query (Naive) = " ++ str(naive_dist_count/len(queries)));
+	print("average distance comp per range query (Pivot) = " ++ str(float(pivot_dist_count)/len(queries)));
+	print("Total time Naive = " ++ str(naive_dur));
+	print("Total time Pivot = " ++ str(pivot_dur) ++ "\n");
+
+	if map(naive_ans, set) != map(pivot_ans, set) print("Naive and pivot ranges different");
+};
+
+test_range_queries();
+
+fn naive_knn_query(query, k) -> {
+	data 
+		>> map(\>> dist(query))
+		>> enumerate
+		>> sort(\(_, len) -> len)		// This takes a _very_ long time
+		// >> map(\(ind, _) -> ind)
+		>> take(k)
+};
+
+fn pivot_knn_query(query, knn) -> {
+	q_dists := pivots >> map(\>> dist(query));
+	knn_inds := [0:knn];
+	knn_dists := data[0:knn] >> map(\>> dist(query));
+	eps := knn_dists >> max;
+
+	for (obj_i, obj) in (data >> enumerate)[knn:] {
+		if q_dists
+			>> enumerate
+			>> map(\(q_i, q_dist) -> abs(dists[q_i][obj_i] - q_dist) <= eps)
+			>> all {
+				new_dist := dist(obj, query);
+				if new_dist < eps {
+					knn_dists >> argmax :>> max_ind;
+
+					knn_dists[max_ind] = new_dist;
+					knn_inds[max_ind] = obj_i;
+					eps = max(knn_dists);
+				};
+			};
+	};
+	zip(knn_inds, knn_dists)
+};
+
+fn test_knn_queries() -> {
+	dist_count = 0;
+	start := time();
+	naive_ans := queries >> map(\>> naive_knn_query(nn));
+	naive_dur := time() - start;
+	naive_dist_count := dist_count;
+
+	dist_count = 0;
+	start := time();
+	pivot_ans := queries >> map(\>> pivot_knn_query(nn));
+	pivot_dur := time() - start;
+	pivot_dist_count := dist_count;
+
+	print("average distance comp per knn query (Naive) = " ++ str(naive_dist_count/len(queries)));
+	print("average distance comp per knn query (Pivot) = " ++ str(float(pivot_dist_count)/len(queries)));
+	print("Total time Naive = " ++ str(naive_dur));
+	print("Total time Pivot = " ++ str(pivot_dur));
+
+	if map(naive_ans, set) != map(pivot_ans, set) print("Naive and pivot knns different");
+};
+
+test_knn_queries();
+
